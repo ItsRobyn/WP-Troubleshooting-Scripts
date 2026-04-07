@@ -314,7 +314,7 @@ print(result)
         this_ok=false
     fi
 
-    $this_ok && eval "$result_var=true" || eval "$result_var=false"
+    if $this_ok; then eval "$result_var=true"; else eval "$result_var=false"; fi
 }
 
 check_ssl "$BARE_DOMAIN" SSL_BARE_OK
@@ -355,7 +355,7 @@ check_a_records() {
         fi
     done <<< "$records"
 
-    $all_ok && POSITIVES+=("A records for ${d} all point to the expected range")
+    if $all_ok; then POSITIVES+=("A records for ${d} all point to the expected range"); fi
 }
 
 check_a_records "$BARE_DOMAIN"

@@ -64,6 +64,26 @@ is_pressable_ip() {
     return 1
 }
 
+# Returns 0 if IP falls within a known Cloudflare range
+is_cloudflare_ip() {
+    local ip="$1"
+    python3 - "$ip" <<'PYEOF' 2>/dev/null
+import ipaddress, sys
+try:
+    addr = ipaddress.ip_address(sys.argv[1])
+    cf_ranges = [
+        '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+        '104.16.0.0/13',   '104.24.0.0/14',   '108.162.192.0/18',
+        '131.0.72.0/22',   '141.101.64.0/18',  '162.158.0.0/15',
+        '172.64.0.0/13',   '173.245.48.0/20',  '188.114.96.0/20',
+        '190.93.240.0/20', '197.234.240.0/22', '198.41.128.0/17',
+    ]
+    sys.exit(0 if any(addr in ipaddress.ip_network(r) for r in cf_ranges) else 1)
+except Exception:
+    sys.exit(1)
+PYEOF
+}
+
 # ── Global tracking ───────────────────────────────────────────
 declare -a POSITIVES=()
 declare -a ISSUES=()
@@ -88,7 +108,7 @@ echo -e "  │${SEC}                    ssl-dns-check.sh                      ${
 echo -e "  │${SEC}                       By Robyn                           ${PRI}│"
 echo -e "  └──────────────────────────────────────────────────────────┘${RST}"
 echo ""
-printf "  ${BLD}%-20s${RST} %s\n" "Version"     "2.0.1"
+printf "  ${BLD}%-20s${RST} %s\n" "Version"     "2.0.2"
 printf "  ${BLD}%-20s${RST} %s\n" "Generated"   "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 printf "  ${BLD}%-20s${RST} %s\n" "Bare domain" "$BARE_DOMAIN"
 printf "  ${BLD}%-20s${RST} %s\n" "WWW domain"  "$WWW_DOMAIN"
@@ -343,11 +363,16 @@ check_a_records() {
         return
     fi
 
-    local all_ok=true
+    local all_ok=true cf_found=false
     while IFS= read -r ip; do
         [[ -z "$ip" ]] && continue
         if is_pressable_ip "$ip"; then
             good "${ip}  —  expected range"
+        elif is_cloudflare_ip "$ip"; then
+            warn "${ip}  —  proxied behind Cloudflare"
+            ISSUES+=("DNS: A record for ${d} (${ip}) is a Cloudflare proxy — SSL provisioning may not work")
+            all_ok=false
+            cf_found=true
         else
             bad "${ip}  —  NOT in expected range"
             ISSUES+=("DNS: A record for ${d} (${ip}) is not in the expected IP range")
@@ -355,7 +380,20 @@ check_a_records() {
         fi
     done <<< "$records"
 
+    if $cf_found; then
+        local hp_response
+        hp_response=$(curl -fsS -L --max-time 8 "https://${d}/.well-known/hosting-provider" 2>/dev/null || true)
+        if echo "$hp_response" | grep -qi "pressable"; then
+            note "Hosting provider: proxied through Cloudflare, but resolves to Pressable"
+        elif [[ -n "$hp_response" ]]; then
+            note "Hosting provider: proxied through Cloudflare — /.well-known/hosting-provider returned: ${hp_response}"
+        else
+            note "Hosting provider: proxied through Cloudflare — /.well-known/hosting-provider did not respond"
+        fi
+    fi
+
     if $all_ok; then POSITIVES+=("A records for ${d} all point to the expected range"); fi
+    echo ""
 }
 
 check_a_records "$BARE_DOMAIN"
@@ -480,6 +518,7 @@ fi
 echo ""
 echo -e "  ${GRY}↳ Common resolutions:${RST}"
 echo -e "  ${GRY}  • Wrong A record IP : Update DNS to 199.16.172.x or 199.16.173.x${RST}"
+echo -e "  ${GRY}  • Cloudflare proxy  : Disable Cloudflare proxy (orange cloud → grey) or use Full SSL mode${RST}"
 echo -e "  ${GRY}  • AAAA records      : Remove IPv6 records from DNS${RST}"
 echo -e "  ${GRY}  • CAA records       : Remove entirely, or add letsencrypt.org${RST}"
 echo -e "  ${GRY}  • DS / DNSKEY       : Disable DNSSEC at your registrar or DNS provider${RST}"

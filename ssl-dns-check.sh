@@ -108,7 +108,7 @@ echo -e "  │${SEC}                    ssl-dns-check.sh                      ${
 echo -e "  │${SEC}                       By Robyn                           ${PRI}│"
 echo -e "  └──────────────────────────────────────────────────────────┘${RST}"
 echo ""
-printf "  ${BLD}%-20s${RST} %s\n" "Version"     "2.0.2"
+printf "  ${BLD}%-20s${RST} %s\n" "Version"     "2.1.0"
 printf "  ${BLD}%-20s${RST} %s\n" "Generated"   "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 printf "  ${BLD}%-20s${RST} %s\n" "Bare domain" "$BARE_DOMAIN"
 printf "  ${BLD}%-20s${RST} %s\n" "WWW domain"  "$WWW_DOMAIN"
